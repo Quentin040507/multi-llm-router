@@ -1,6 +1,6 @@
 # 三模型分工协作的 LLM 智能路由系统
 
-输入一个自然语言问题，系统自动判断它属于哪个领域，分发给最擅长的模型作答；也支持三模型同时回答并对比、以及客观题的举手表决。
+输入一个自然语言问题，系统自动判断它属于哪个领域，分发给最擅长的模型作答；也支持三模型圆桌会诊（实时直播辩论 + 主持人裁决）、以及客观题的举手表决。支持多会话管理与历史记录持久化，关闭重开不丢。
 
 接入的三家（均为 OpenAI 兼容接口）：
 
@@ -50,11 +50,13 @@
 ├── app.py          # CLI 入口
 ├── server.py       # FastAPI 服务（网页窗口 + API）
 ├── 三模型路由系统.html   # 网页窗口前端（由服务托管，勿直接双击打开）
-├── start.command   # 双击启动窗口（macOS）
+├── 双击打开三ai 系统.command   # 双击启动窗口（macOS）
 ├── config.py       # 模型注册表 + .env 加载 + 标签映射
 ├── client.py       # OpenAI 兼容客户端（同步/异步/流式）
 ├── router.py       # 分类与路由（GLM 分类 + 关键词兜底）
 ├── modes.py        # 三种模式逻辑
+├── council.py      # 圆桌会诊（三轮讨论 + SSE 事件流）
+├── sessions.py     # 多会话存储与历史记录（持久化 .sessions.json）
 ├── history.py      # 本地日志（logs/history.jsonl）
 ├── test_smoke.py   # 冒烟测试（无需真实 key）
 ├── .env.example    # key 模板
@@ -127,7 +129,7 @@ python3 app.py --stream "写一个二分查找的Python实现"
 
 **方式一：双击启动（最简单）**
 
-在访达里双击项目目录下的 `start.command`，会自动启动服务并打开浏览器。首次双击若被 macOS 拦截，右键该文件 → 「打开」。
+在访达里双击项目目录下的 `双击打开三ai 系统.command`，会自动启动服务并打开浏览器。首次双击若被 macOS 拦截，右键该文件 → 「打开」。
 
 **方式二：手动命令**
 
@@ -137,7 +139,7 @@ python3 -m uvicorn server:app --host 127.0.0.1 --port 8000
 
 然后浏览器打开 **http://127.0.0.1:8000**。
 
-窗口里可以直接点右上角「⚙ 设置」填入三个 API key，点保存即写入 `.env`、立即生效（无需重启）；无需手动编辑 `.env`。界面支持三种模式：智能路由 / 圆桌会诊 / 举手表决。
+窗口里可以直接点右上角「⚙ 设置」填入三个 API key，点保存即写入 `.env`、立即生效（无需重启）；无需手动编辑 `.env`。界面支持三种模式：智能路由 / 圆桌会诊 / 举手表决，左侧边栏支持**多会话**——可新建、切换、删除会话，历史记录自动持久化，关闭重开不丢。
 
 > 服务默认只监听 `127.0.0.1`（本机），不会把 key 暴露到局域网。
 
@@ -148,13 +150,18 @@ python3 -m uvicorn server:app --host 127.0.0.1 --port 8000
 | GET | `/` | 网页窗口 |
 | GET | `/config` | 查询各模型 key 是否已配置 |
 | POST | `/config` | 保存 key（body: `{"deepseek":"...","glm":"...","kimi":"..."}`） |
-| POST | `/ask` | 提问（body: `{"question":"...","mode":"route|all|vote"}`） |
+| GET | `/sessions` | 会话列表 |
+| POST | `/sessions/new` | 新建会话 |
+| GET | `/sessions/{id}` | 某会话完整历史 |
+| POST | `/sessions/{id}/delete` | 删除某会话 |
+| POST | `/ask` | 提问（body: `{"question":"...","mode":"route|vote","session_id":"..."}`） |
+| POST | `/ask/stream` | 圆桌会诊（SSE 实时推送，body 同上） |
 | GET | `/health` | 健康检查 |
 
 ```bash
 curl -X POST http://127.0.0.1:8000/ask \
   -H 'Content-Type: application/json' \
-  -d '{"question":"帮我写个快排","mode":"route"}'
+  -d '{"question":"帮我写个快排","mode":"route","session_id":"<会话id>"}'
 ```
 
 ---

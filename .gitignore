@@ -1,5 +1,7 @@
 .env
 .session.json
+.session.json.migrated
+.sessions.json
 __pycache__/
 *.pyc
 logs/

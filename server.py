@@ -6,26 +6,29 @@
 然后浏览器打开 http://127.0.0.1:8000
 
 接口：
-  GET  /          -> 网页窗口（三模型路由系统.html）
-  GET  /health    -> 健康检查
-  GET  /config    -> 各模型 key 是否已配置
-  POST /config    -> 保存/更新 key（写入 .env，立即生效，无需重启）
-  POST /ask       -> 提问  body: {"question": "...", "mode": "route|all|vote"}
-  POST /ask/stream-> 圆桌会诊（SSE 实时推送三轮讨论）
-  POST /clear     -> 清空会话历史
-  注：/ask 与 /ask/stream 均自动携带会话历史（最近 6 轮），并持久化到 .session.json，重启不丢。
+  GET  /                       -> 网页窗口（三模型路由系统.html）
+  GET  /health                 -> 健康检查
+  GET  /config                 -> 各模型 key 是否已配置
+  POST /config                 -> 保存/更新 key（写入 .env，立即生效，无需重启）
+  GET  /sessions               -> 会话列表
+  POST /sessions/new           -> 新建会话
+  GET  /sessions/{sid}         -> 某会话完整历史
+  POST /sessions/{sid}/delete  -> 删除某会话
+  POST /ask                    -> 提问  body: {"question","mode","session_id"}
+  POST /ask/stream             -> 圆桌会诊（SSE 实时推送），带 session_id
+  注：提问均携带所属会话，会话历史持久化到 .sessions.json，重启不丢。
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import json
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 import config as cfg
+import sessions as store
 from council import council_events
 from modes import route_mode, all_mode, vote_mode
 
@@ -33,53 +36,26 @@ BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="三模型路由系统")
 
-# ---- 会话历史（持久化到 .session.json，重启不丢）----
-HISTORY: list[dict] = []
-MAX_HISTORY = 12  # 保留最近 6 轮对话，控制 token 开销
-SESSION_FILE = BASE_DIR / ".session.json"
-
-
-def _load_history() -> None:
-    """启动时从磁盘恢复会话历史。"""
-    global HISTORY
-    try:
-        if SESSION_FILE.exists():
-            data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
-            HISTORY = data if isinstance(data, list) else []
-    except Exception:
-        HISTORY = []
-
-
-def _persist() -> None:
-    """把当前历史写回磁盘（原子写，避免写一半损坏）。"""
-    try:
-        tmp = SESSION_FILE.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(HISTORY, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(SESSION_FILE)
-    except Exception:
-        pass
-
-
-def _remember(question: str, answer: str) -> None:
-    HISTORY.append({"role": "user", "content": question})
-    if answer:
-        HISTORY.append({"role": "assistant", "content": answer})
-    del HISTORY[:-MAX_HISTORY]
-    _persist()
-
-
-_load_history()
+MAX_CONTEXT = 12  # 每个会话传给模型最近 6 轮，控制 token 开销
 
 
 class AskRequest(BaseModel):
     question: str
     mode: str = "route"
+    session_id: str = ""
 
 
 class ConfigRequest(BaseModel):
     deepseek: str = ""
     glm: str = ""
     kimi: str = ""
+
+
+def _resolve_session(sid: str) -> str:
+    """拿到有效会话 id：为空或不存在则新建。"""
+    if sid and store.get_session(sid):
+        return sid
+    return store.new_session()["id"]
 
 
 @app.get("/")
@@ -103,25 +79,48 @@ def set_config(req: ConfigRequest) -> dict:
     return {"keys": cfg.key_status()}
 
 
-@app.post("/clear")
-def clear() -> dict:
-    """清空会话历史（前端「清空」按钮同步调用）。"""
-    HISTORY.clear()
-    _persist()
+# ---- 会话管理 ----
+
+@app.get("/sessions")
+def list_sessions() -> dict:
+    return {"sessions": store.list_sessions()}
+
+
+@app.post("/sessions/new")
+def create_session() -> dict:
+    return {"session": store.new_session()}
+
+
+@app.get("/sessions/{sid}")
+def get_session(sid: str) -> dict:
+    if not store.get_session(sid):
+        return {"status": "error", "message": "会话不存在"}
+    return {"messages": store.get_history(sid)}
+
+
+@app.post("/sessions/{sid}/delete")
+def delete_session(sid: str) -> dict:
+    store.delete_session(sid)
     return {"status": "ok"}
 
 
+# ---- 提问 ----
+
 @app.post("/ask/stream")
 async def ask_stream(req: AskRequest) -> StreamingResponse:
-    """圆桌会诊：SSE 实时推送三轮讨论过程（带会话历史）。"""
+    """圆桌会诊：SSE 实时推送三轮讨论过程（带所属会话历史）。"""
+    sid = _resolve_session(req.session_id)
+    history = store.get_context(sid, MAX_CONTEXT)
+
     async def gen():
         verdict = ""
-        async for ev in council_events(req.question, history=list(HISTORY)):
+        yield f"data: {json.dumps({'type': 'session', 'id': sid}, ensure_ascii=False)}\n\n"
+        async for ev in council_events(req.question, history=history):
             if ev.get("type") == "verdict":
                 verdict = ev.get("text", "")
             yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         if verdict:
-            _remember(req.question, verdict)
+            store.append_turn(sid, req.question, verdict, "council")
         yield 'data: {"type": "end"}\n\n'
 
     return StreamingResponse(
@@ -133,25 +132,31 @@ async def ask_stream(req: AskRequest) -> StreamingResponse:
 @app.post("/ask")
 def ask(req: AskRequest) -> dict:
     mode = req.mode.strip().lower()
-    history = list(HISTORY)
+    sid = _resolve_session(req.session_id)
+    history = store.get_context(sid, MAX_CONTEXT)
+
     if mode == "all":
         result = all_mode(req.question, history=history)
+        kind = "council"
     elif mode == "vote":
         result = vote_mode(req.question, history=history)
+        kind = "vote"
     else:
         result = route_mode(req.question, history=history)
+        kind = "route"
 
     if result is None:
         return {"status": "error",
                 "message": "没有可用模型。请先点右上角「设置」配置 API key。",
-                "question": req.question, "mode": mode}
+                "question": req.question, "mode": mode, "session_id": sid}
 
-    # 把本轮问答记入会话历史
+    # 把本轮问答记入所属会话
     if mode == "route":
         answer = result.get("answer", "")
     elif mode == "all":
         answer = (result.get("summary") or {}).get("text", "")
     else:  # vote
         answer = result.get("result") or ""
-    _remember(req.question, answer)
-    return {"status": "ok", "question": req.question, "mode": mode, "result": result}
+    store.append_turn(sid, req.question, answer, kind)
+    return {"status": "ok", "question": req.question, "mode": mode,
+            "session_id": sid, "result": result}

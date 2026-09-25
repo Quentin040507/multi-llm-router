@@ -99,6 +99,20 @@
   }
   .field input:focus { outline: none; border-color: var(--accent); }
   .modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+
+  /* 会话侧边栏 */
+  .workspace { flex: 1; display: flex; min-height: 0; }
+  #sidebar { width: 224px; flex: none; border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  .side-head { padding: 12px; border-bottom: 1px solid var(--border); flex: none; }
+  .side-head button { width: 100%; }
+  #session-list { flex: 1; overflow-y: auto; }
+  .session-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .session-item:hover { background: #232c36; }
+  .session-item.active { background: #1d2a3a; box-shadow: inset 2px 0 0 var(--accent); }
+  .session-item .title { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session-item .del { background: none; border: none; color: var(--muted); padding: 2px 6px; font-size: 14px; line-height: 1; }
+  .session-item .del:hover { color: var(--red); }
+  .chat-wrap { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 </style>
 </head>
 <body>
@@ -110,26 +124,34 @@
       <span class="dot" id="dot-kimi"><span class="b"></span>Kimi</span>
     </div>
     <button id="btn-settings">⚙ 设置</button>
-    <button id="btn-clear">清空</button>
+    <button id="btn-clear">删除会话</button>
   </header>
 
-  <main id="chat">
-    <div class="hint">输入问题，选择模式后发送。「圆桌会诊」可实时观看三个模型讨论并给出裁决。</div>
-  </main>
+  <div class="workspace">
+    <aside id="sidebar">
+      <div class="side-head"><button id="btn-new">＋ 新建会话</button></div>
+      <div id="session-list"></div>
+    </aside>
+    <div class="chat-wrap">
+      <main id="chat">
+        <div class="hint">输入问题，选择模式后发送。「圆桌会诊」可实时观看三个模型讨论并给出裁决。</div>
+      </main>
 
-  <footer>
-    <div class="input-box">
-      <div class="input-row">
-        <textarea id="q" placeholder="输入你的问题…（Enter 发送，Shift+Enter 换行）"></textarea>
-        <select id="mode">
-          <option value="route">智能路由</option>
-          <option value="council">圆桌会诊</option>
-          <option value="vote">举手表决</option>
-        </select>
-        <button class="primary" id="btn-send">发送</button>
-      </div>
+      <footer>
+        <div class="input-box">
+          <div class="input-row">
+            <textarea id="q" placeholder="输入你的问题…（Enter 发送，Shift+Enter 换行）"></textarea>
+            <select id="mode">
+              <option value="route">智能路由</option>
+              <option value="council">圆桌会诊</option>
+              <option value="vote">举手表决</option>
+            </select>
+            <button class="primary" id="btn-send">发送</button>
+          </div>
+        </div>
+      </footer>
     </div>
-  </footer>
+  </div>
 
   <div class="overlay" id="overlay">
     <div class="modal">
@@ -159,6 +181,8 @@
 
   const $ = (id) => document.getElementById(id);
   const chat = $('chat'), q = $('q'), modeSel = $('mode');
+
+  let currentId = null;  // 当前会话 id
 
   // ---- key 状态 ----
   async function loadConfig() {
@@ -202,13 +226,11 @@
 
   // ---- 发送 ----
   $('btn-send').onclick = send;
+  $('btn-new').onclick = () => newSession();
   q.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
-  $('btn-clear').onclick = () => {
-    chat.innerHTML = '';
-    fetch('/clear', { method: 'POST' }).catch(() => {});
-  };
+  $('btn-clear').onclick = () => { if (currentId) deleteSession(currentId); };
 
   async function send() {
     const question = q.value.trim();
@@ -226,7 +248,7 @@
       try {
         const r = await fetch('/ask', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, mode }),
+          body: JSON.stringify({ question, mode, session_id: currentId }),
         });
         const data = await r.json();
         loading.remove();
@@ -235,6 +257,7 @@
         } else {
           renderResult(data.result);
         }
+        refreshSessionList();
       } catch (e) {
         loading.remove();
         addError('请求失败：' + e);
@@ -250,7 +273,7 @@
     try {
       const r = await fetch('/ask/stream', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, mode: 'council' }),
+        body: JSON.stringify({ question, mode: 'council', session_id: currentId }),
       });
       if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
       const reader = r.body.getReader();
@@ -273,6 +296,7 @@
     } catch (e) {
       addError('圆桌会诊请求失败：' + e);
     }
+    refreshSessionList();
   }
 
   function addCouncilShell() {
@@ -438,6 +462,117 @@
 
   function scrollBottom() { chat.scrollTop = chat.scrollHeight; }
 
+  // ---- 会话管理 ----
+  async function fetchSessionList() {
+    try {
+      const r = await fetch('/sessions');
+      return (await r.json()).sessions || [];
+    } catch (e) { return []; }
+  }
+
+  function renderSessionList(list) {
+    const box = $('session-list');
+    box.innerHTML = '';
+    for (const s of list) {
+      const div = document.createElement('div');
+      div.className = 'session-item' + (s.id === currentId ? ' active' : '');
+      div.innerHTML = '<span class="title">' + escapeHtml(s.title || '新会话') + '</span>' +
+        '<button class="del" title="删除">✕</button>';
+      div.onclick = () => selectSession(s.id);
+      div.querySelector('.del').onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
+      box.appendChild(div);
+    }
+  }
+
+  async function refreshSessionList() {
+    renderSessionList(await fetchSessionList());
+  }
+
+  function addHint() {
+    const div = document.createElement('div');
+    div.className = 'hint';
+    div.textContent = '输入问题，选择模式后发送。「圆桌会诊」可实时观看三个模型讨论并给出裁决。';
+    chat.appendChild(div);
+  }
+
+  async function selectSession(id) {
+    currentId = id;
+    chat.innerHTML = '';
+    try {
+      const r = await fetch('/sessions/' + id);
+      const data = await r.json();
+      const msgs = data.messages || [];
+      if (!msgs.length) addHint();
+      renderHistory(msgs);
+    } catch (e) { addHint(); }
+    renderSessionList(await fetchSessionList());
+  }
+
+  async function newSession() {
+    const r = await fetch('/sessions/new', { method: 'POST' });
+    const data = await r.json();
+    currentId = data.session.id;
+    chat.innerHTML = '';
+    addHint();
+    renderSessionList(await fetchSessionList());
+  }
+
+  async function deleteSession(id) {
+    if (!confirm('确定删除这个会话？删除后不可恢复。')) return;
+    await fetch('/sessions/' + id + '/delete', { method: 'POST' });
+    if (id === currentId) currentId = null;
+    const list = await fetchSessionList();
+    renderSessionList(list);
+    if (list.length) await selectSession(list[0].id);
+    else await newSession();
+  }
+
+  async function initSessions() {
+    const list = await fetchSessionList();
+    renderSessionList(list);
+    if (list.length) await selectSession(list[0].id);
+    else await newSession();
+  }
+
+  // ---- 历史回放 ----
+  function renderHistory(messages) {
+    for (const m of messages) {
+      if (m.role === 'user') {
+        addMsg('q', m.content);
+      } else if (m.kind === 'council') {
+        addHistoryCouncil(m.content);
+      } else if (m.kind === 'vote') {
+        addHistoryVote(m.content);
+      } else {
+        addHistoryAnswer(m.content);
+      }
+    }
+    scrollBottom();
+  }
+
+  function addHistoryAnswer(text) {
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.innerHTML = '<div class="card"><div class="meta"><span class="tag">回答</span></div>' +
+      '<pre class="answer">' + escapeHtml(text) + '</pre></div>';
+    chat.appendChild(div);
+  }
+
+  function addHistoryCouncil(text) {
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.innerHTML = '<div class="card summary"><div class="meta"><span class="tag">主持人裁决</span></div>' +
+      '<pre class="answer">' + escapeHtml(text) + '</pre></div>';
+    chat.appendChild(div);
+  }
+
+  function addHistoryVote(text) {
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.innerHTML = '<div class="banner">🎯 多数一致结论：<span class="big">' + escapeHtml(text) + '</span></div>';
+    chat.appendChild(div);
+  }
+
   // 直接双击 html（file://）打开时，/config /ask 接口不存在，给出明确提示
   if (location.protocol === 'file:') {
     const div = document.createElement('div');
@@ -450,6 +585,7 @@
     $('btn-save').disabled = true;
   } else {
     loadConfig();
+    initSessions();
   }
 </script>
 </body>
