@@ -131,8 +131,11 @@ def get_context(sid: str, limit: int = 12) -> list[dict]:
     return [{"role": m["role"], "content": m["content"]} for m in s["messages"][-limit:]]
 
 
-def append_turn(sid: str, question: str, answer: str, kind: str) -> None:
-    """给某会话追加一轮问答；首条问题自动作为会话标题。"""
+def append_turn(sid: str, question: str, answer: str, kind: str, debate: list | None = None) -> None:
+    """给某会话追加一轮问答；首条问题自动作为会话标题。
+
+    debate（可选）：圆桌会诊的完整辩论过程，供历史回放时展开查看。
+    """
     s = _sessions.get(sid)
     if not s:
         return
@@ -140,7 +143,10 @@ def append_turn(sid: str, question: str, answer: str, kind: str) -> None:
         s["title"] = question[:20] + ("…" if len(question) > 20 else "")
     s["messages"].append({"role": "user", "content": question})
     if answer:
-        s["messages"].append({"role": "assistant", "content": answer, "kind": kind})
+        msg = {"role": "assistant", "content": answer, "kind": kind}
+        if debate:
+            msg["debate"] = debate
+        s["messages"].append(msg)
     _persist()
 
 

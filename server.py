@@ -114,13 +114,41 @@ async def ask_stream(req: AskRequest) -> StreamingResponse:
 
     async def gen():
         verdict = ""
+        labels: dict[str, str] = {}
+        rounds: dict[int, dict] = {}
         yield f"data: {json.dumps({'type': 'session', 'id': sid}, ensure_ascii=False)}\n\n"
         async for ev in council_events(req.question, history=history):
-            if ev.get("type") == "verdict":
+            t = ev.get("type")
+            if t == "init":
+                for m in ev.get("models", []):
+                    labels[m["key"]] = m["label"]
+            elif t == "round":
+                rnd = ev["round"]
+                rounds[rnd] = {"title": ev.get("title", ""), "seats": {}}
+            elif t == "delta":
+                rnd, model = ev["round"], ev["model"]
+                rounds.setdefault(rnd, {"title": "", "seats": {}})
+                seat = rounds[rnd]["seats"].setdefault(
+                    model, {"label": labels.get(model, model), "text": "", "error": ""})
+                seat["text"] += ev.get("text", "")
+            elif t == "model_error":
+                rnd, model = ev["round"], ev["model"]
+                rounds.setdefault(rnd, {"title": "", "seats": {}})
+                seat = rounds[rnd]["seats"].setdefault(
+                    model, {"label": labels.get(model, model), "text": "", "error": ""})
+                seat["error"] = ev.get("message", "")
+            elif t == "verdict":
                 verdict = ev.get("text", "")
             yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         if verdict:
-            store.append_turn(sid, req.question, verdict, "council")
+            debate = [
+                {"round": rnd, "title": r["title"],
+                 "seats": [{"model": k, "label": v["label"],
+                            "text": v["text"], "error": v["error"]}
+                           for k, v in r["seats"].items()]}
+                for rnd, r in sorted(rounds.items())
+            ]
+            store.append_turn(sid, req.question, verdict, "council", debate=debate)
         yield 'data: {"type": "end"}\n\n'
 
     return StreamingResponse(

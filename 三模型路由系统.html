@@ -33,6 +33,8 @@
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.primary:hover { background: #5d97ff; }
   button:disabled { opacity: .5; cursor: not-allowed; }
+  #btn-stop { border-color: var(--red); color: var(--red); }
+  #btn-stop:hover { background: #3a2020; }
 
   #chat { flex: 1; overflow-y: auto; padding: 24px 20px; display: flex; flex-direction: column; gap: 16px; }
   .msg { max-width: 860px; width: 100%; margin: 0 auto; }
@@ -80,6 +82,17 @@
   .seat .head .st { margin-left: auto; font-size: 12px; color: var(--muted); }
   .seat pre.answer { font-size: 13px; min-height: 20px; }
   .seat pre.answer.streaming::after { content: '▍'; color: var(--accent); animation: blink 1s infinite; }
+  .answer.md { font-size: 13px; line-height: 1.7; }
+  .answer.md h1, .answer.md h2 { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+  .answer.md h3 { font-size: 14px; font-weight: 600; margin: 10px 0 4px; }
+  .answer.md p { margin: 6px 0; }
+  .answer.md ul { margin: 6px 0; padding-left: 20px; }
+  .answer.md li { margin: 3px 0; }
+  .answer.md hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  .answer.md strong { font-weight: 600; }
+  .toggle-debate { margin-left: auto; background: none; border: 1px solid var(--border); color: var(--accent); padding: 3px 10px; border-radius: 6px; font-size: 12px; }
+  .toggle-debate:hover { background: #232c36; }
+  .debate { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 14px; }
   .seat.err { border-color: var(--red); }
   .seat.host { grid-column: 1 / -1; border-color: #4f8cff88; background: #16202e; }
 
@@ -134,7 +147,7 @@
     </aside>
     <div class="chat-wrap">
       <main id="chat">
-        <div class="hint">输入问题，选择模式后发送。「圆桌会诊」可实时观看三个模型讨论并给出裁决。</div>
+        <div class="hint">输入问题，选择模式后发送。「圆桌会诊」可实时观看三个模型讨论并给出最终总结。</div>
       </main>
 
       <footer>
@@ -142,11 +155,12 @@
           <div class="input-row">
             <textarea id="q" placeholder="输入你的问题…（Enter 发送，Shift+Enter 换行）"></textarea>
             <select id="mode">
-              <option value="route">智能路由</option>
               <option value="council">圆桌会诊</option>
+              <option value="route">智能路由</option>
               <option value="vote">举手表决</option>
             </select>
             <button class="primary" id="btn-send">发送</button>
+            <button id="btn-stop" style="display:none">■ 停止</button>
           </div>
         </div>
       </footer>
@@ -183,6 +197,7 @@
   const chat = $('chat'), q = $('q'), modeSel = $('mode');
 
   let currentId = null;  // 当前会话 id
+  let councilAbort = null;  // 圆桌会诊的 AbortController（用于停止）
 
   // ---- key 状态 ----
   async function loadConfig() {
@@ -226,6 +241,7 @@
 
   // ---- 发送 ----
   $('btn-send').onclick = send;
+  $('btn-stop').onclick = () => { if (councilAbort) councilAbort.abort(); };
   $('btn-new').onclick = () => newSession();
   q.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -270,10 +286,13 @@
   // ---- 圆桌会诊（SSE 直播）----
   async function sendCouncil(question) {
     const shell = addCouncilShell();
+    councilAbort = new AbortController();
+    $('btn-stop').style.display = '';
     try {
       const r = await fetch('/ask/stream', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question, mode: 'council', session_id: currentId }),
+        signal: councilAbort.signal,
       });
       if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
       const reader = r.body.getReader();
@@ -294,7 +313,14 @@
         }
       }
     } catch (e) {
-      addError('圆桌会诊请求失败：' + e);
+      if (e.name === 'AbortError') {
+        addError('已停止本次讨论。');
+      } else {
+        addError('圆桌会诊请求失败：' + e);
+      }
+    } finally {
+      $('btn-stop').style.display = 'none';
+      councilAbort = null;
     }
     refreshSessionList();
   }
@@ -316,6 +342,8 @@
       if (oldDot) oldDot.remove();
       shell.seats = {};
       const sec = document.createElement('div');
+      sec.className = 'round';
+      sec.dataset.round = ev.round;
       sec.innerHTML = '<div class="round-title"><span class="live-dot"></span>' +
         escapeHtml(ev.title) + '</div><div class="seats"></div>';
       shell.root.appendChild(sec);
@@ -337,6 +365,32 @@
     } else if (ev.type === 'verdict') {
       const dot = shell.root.querySelector('.live-dot');
       if (dot) dot.remove();
+      const hostPre = shell.root.querySelector('.seat.host pre.answer');
+      if (hostPre) {
+        const div = document.createElement('div');
+        div.className = 'answer md';
+        div.innerHTML = renderMarkdown(hostPre.textContent);
+        hostPre.replaceWith(div);
+      }
+      // 讨论结束：折叠前两轮辩论，总结卡加「查看辩论过程」按钮
+      const rounds = shell.root.querySelectorAll('.round[data-round]');
+      rounds.forEach((sec) => {
+        if (sec.dataset.round !== '3') sec.style.display = 'none';
+      });
+      const hostRound = shell.root.querySelector('.round[data-round="3"]');
+      if (hostRound) {
+        const btn = document.createElement('button');
+        btn.className = 'toggle-debate';
+        btn.textContent = '查看辩论过程 ▾';
+        btn.onclick = () => {
+          const open = btn.textContent.indexOf('收起') >= 0;
+          rounds.forEach((sec) => {
+            if (sec.dataset.round !== '3') sec.style.display = open ? 'none' : 'block';
+          });
+          btn.textContent = open ? '查看辩论过程 ▾' : '收起辩论过程 ▴';
+        };
+        hostRound.querySelector('.round-title').appendChild(btn);
+      }
     } else if (ev.type === 'error') {
       addError(ev.message);
     }
@@ -460,6 +514,28 @@
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // 轻量 Markdown 渲染（标题/加粗/列表/分隔线），先转义再渲染，防 XSS
+  function mdInline(s) {
+    return s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  }
+  function renderMarkdown(text) {
+    const lines = escapeHtml(text).split('\n');
+    let html = '', inList = false;
+    const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+    for (const raw of lines) {
+      const t = raw.trim();
+      if (/^###\s/.test(t)) { closeList(); html += '<h3>' + mdInline(t.slice(4)) + '</h3>'; }
+      else if (/^##\s/.test(t)) { closeList(); html += '<h2>' + mdInline(t.slice(3)) + '</h2>'; }
+      else if (/^#\s/.test(t)) { closeList(); html += '<h1>' + mdInline(t.slice(2)) + '</h1>'; }
+      else if (t === '---' || t === '***') { closeList(); html += '<hr>'; }
+      else if (/^[-*]\s/.test(t)) { if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + mdInline(t.slice(2)) + '</li>'; }
+      else if (t === '') { closeList(); }
+      else { closeList(); html += '<p>' + mdInline(t) + '</p>'; }
+    }
+    closeList();
+    return html;
+  }
+
   function scrollBottom() { chat.scrollTop = chat.scrollHeight; }
 
   // ---- 会话管理 ----
@@ -491,7 +567,7 @@
   function addHint() {
     const div = document.createElement('div');
     div.className = 'hint';
-    div.textContent = '输入问题，选择模式后发送。「圆桌会诊」可实时观看三个模型讨论并给出裁决。';
+    div.textContent = '输入问题，选择模式后发送。「圆桌会诊」可实时观看三个模型讨论并给出最终总结。';
     chat.appendChild(div);
   }
 
@@ -540,7 +616,7 @@
       if (m.role === 'user') {
         addMsg('q', m.content);
       } else if (m.kind === 'council') {
-        addHistoryCouncil(m.content);
+        addHistoryCouncil(m.content, m.debate);
       } else if (m.kind === 'vote') {
         addHistoryVote(m.content);
       } else {
@@ -558,12 +634,44 @@
     chat.appendChild(div);
   }
 
-  function addHistoryCouncil(text) {
+  function addHistoryCouncil(text, debate) {
     const div = document.createElement('div');
     div.className = 'msg';
-    div.innerHTML = '<div class="card summary"><div class="meta"><span class="tag">主持人裁决</span></div>' +
-      '<pre class="answer">' + escapeHtml(text) + '</pre></div>';
+    const hasDebate = debate && debate.length;
+    let html = '<div class="card summary"><div class="meta">' +
+      '<span class="tag">主持人总结</span>';
+    if (hasDebate) html += '<button class="toggle-debate">查看辩论过程 ▾</button>';
+    html += '</div><div class="answer md">' + renderMarkdown(text) + '</div>';
+    if (hasDebate) {
+      html += '<div class="debate" style="display:none">' + renderDebate(debate) + '</div>';
+    }
+    html += '</div>';
+    div.innerHTML = html;
+    const btn = div.querySelector('.toggle-debate');
+    if (btn) {
+      btn.onclick = () => {
+        const box = div.querySelector('.debate');
+        const open = box.style.display !== 'none';
+        box.style.display = open ? 'none' : 'block';
+        btn.textContent = open ? '查看辩论过程 ▾' : '收起辩论过程 ▴';
+      };
+    }
     chat.appendChild(div);
+  }
+
+  function renderDebate(debate) {
+    let html = '';
+    for (const rd of debate) {
+      html += '<div class="round"><div class="round-title">' +
+        escapeHtml(rd.title || ('第 ' + rd.round + ' 轮')) + '</div><div class="seats">';
+      for (const seat of (rd.seats || [])) {
+        html += '<div class="seat' + (seat.error ? ' err' : '') + '"><div class="head"><span class="tag ' +
+          escapeHtml(seat.model) + '">' + escapeHtml(seat.label) + '</span></div><pre class="answer">' +
+          (seat.error ? '调用失败：' + escapeHtml(seat.error) : escapeHtml(seat.text)) + '</pre></div>';
+      }
+      html += '</div></div>';
+    }
+    return html;
   }
 
   function addHistoryVote(text) {
