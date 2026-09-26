@@ -3,10 +3,15 @@
 # 首次双击若被 macOS 拦截，请右键 -> 打开。
 cd "$(dirname "$0")" || exit 1
 
-# Python 解释器：优先取环境变量 PYTHON，否则自动探测 python3
-PY="${PYTHON:-$(command -v python3)}"
-if [ -z "$PY" ]; then
-  echo "未找到 python3，请先安装 Python 3.10+ 并安装依赖。"
+# Python 解释器：环境变量 PYTHON > WorkBuddy 托管 Python > 系统 python3
+if [ -n "$PYTHON" ]; then
+  PY="$PYTHON"
+elif [ -x "$HOME/.workbuddy/binaries/python/versions/3.13.12/bin/python3" ]; then
+  PY="$HOME/.workbuddy/binaries/python/versions/3.13.12/bin/python3"
+elif command -v python3 >/dev/null 2>&1; then
+  PY="$(command -v python3)"
+else
+  echo "未找到可用的 Python，请先安装 Python 3.10+ 并安装依赖。"
   exit 1
 fi
 PORT=8000

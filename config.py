@@ -41,7 +41,7 @@ MODELS = {
         "name": "glm",
         "label": "GLM",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "model": "glm-4-flash",
+        "model": "glm-4.5-air",
         "api_key_env": "ZHIPU_API_KEY",
         "description": "中文写作、文案、办公场景",
     },

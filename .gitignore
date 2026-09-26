@@ -7,3 +7,8 @@ __pycache__/
 logs/
 .venv/
 .DS_Store
+server.log
+launcher.applescript
+*.app/
+AppIcon.iconset/
+AppIcon.icns

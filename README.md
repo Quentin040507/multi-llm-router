@@ -7,7 +7,7 @@
 | 模型 | API 提供方 | 擅长领域（路由依据） |
 |---|---|---|
 | DeepSeek（deepseek-chat） | DeepSeek 官方 | 代码、数学、逻辑推理 |
-| GLM（glm-4-flash） | 智谱 BigModel | 中文写作、文案、办公场景 |
+| GLM（glm-4.5-air） | 智谱 BigModel | 中文写作、文案、办公场景 |
 | Kimi（kimi-k2.7-code-highspeed） | 月之暗面 Moonshot | 通用对话、长文理解、多语言 |
 
 ---
