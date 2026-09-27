@@ -44,7 +44,7 @@
   .card .meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; }
   .tag { padding: 2px 8px; border-radius: 6px; font-size: 12px; background: #243041; color: #9ecbff; }
   .tag.deepseek { background: #1d2a3a; color: #6cb2ff; }
-  .tag.glm { background: #2a2f1d; color: #b5d65a; }
+  .tag.qwen { background: #2a2f1d; color: #b5d65a; }
   .tag.kimi { background: #2d1f33; color: #d59aff; }
   .meta .cost { margin-left: auto; color: var(--muted); font-size: 12px; }
   pre.answer { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; line-height: 1.6; font-size: 14px; }
@@ -133,7 +133,7 @@
     <h1>三模型路由系统</h1>
     <div class="status">
       <span class="dot" id="dot-deepseek"><span class="b"></span>DeepSeek</span>
-      <span class="dot" id="dot-glm"><span class="b"></span>GLM</span>
+      <span class="dot" id="dot-qwen"><span class="b"></span>Qwen</span>
       <span class="dot" id="dot-kimi"><span class="b"></span>Kimi</span>
     </div>
     <button id="btn-settings">⚙ 设置</button>
@@ -176,8 +176,8 @@
         <input type="password" id="key-deepseek" placeholder="sk-...">
       </div>
       <div class="field">
-        <label>GLM（智谱） <span class="st" id="st-glm"></span></label>
-        <input type="password" id="key-glm" placeholder="智谱 API key">
+        <label>Qwen（通义千问） <span class="st" id="st-qwen"></span></label>
+        <input type="password" id="key-qwen" placeholder="通义千问 API key">
       </div>
       <div class="field">
         <label>Kimi（月之暗面） <span class="st" id="st-kimi"></span></label>
@@ -191,7 +191,7 @@
   </div>
 
 <script>
-  const MODEL_LABEL = { deepseek: 'DeepSeek', glm: 'GLM', kimi: 'Kimi' };
+  const MODEL_LABEL = { deepseek: 'DeepSeek', qwen: 'Qwen', kimi: 'Kimi' };
 
   const $ = (id) => document.getElementById(id);
   const chat = $('chat'), q = $('q'), modeSel = $('mode');
@@ -208,7 +208,7 @@
     } catch (e) { console.error(e); }
   }
   function applyKeyStatus(keys) {
-    for (const k of ['deepseek', 'glm', 'kimi']) {
+    for (const k of ['deepseek', 'qwen', 'kimi']) {
       const ok = !!keys[k];
       $('dot-' + k).classList.toggle('ok', ok);
       const st = $('st-' + k);
@@ -224,7 +224,7 @@
   $('btn-save').onclick = async () => {
     const body = {
       deepseek: $('key-deepseek').value.trim(),
-      glm: $('key-glm').value.trim(),
+      qwen: $('key-qwen').value.trim(),
       kimi: $('key-kimi').value.trim(),
     };
     try {
@@ -234,7 +234,7 @@
       });
       const data = await r.json();
       applyKeyStatus(data.keys || {});
-      $('key-deepseek').value = $('key-glm').value = $('key-kimi').value = '';
+      $('key-deepseek').value = $('key-qwen').value = $('key-kimi').value = '';
       $('overlay').classList.remove('show');
     } catch (e) { alert('保存失败：' + e); }
   };

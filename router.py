@@ -1,6 +1,6 @@
-"""路由：GLM 分类 + 本地关键词兜底。
+"""路由：Qwen 分类 + 本地关键词兜底。
 
-分类优先用最便宜的 GLM-4-Flash，只让它输出一个标签；
+分类优先用 Qwen，只让它输出一个标签；
 解析失败重试一次，仍失败或调用异常时退回本地关键词规则。
 """
 from __future__ import annotations
@@ -70,7 +70,7 @@ def parse_label(text: str) -> str | None:
 
 
 def classify(question: str, classifier_client=None) -> tuple[str, str, float]:
-    """返回 (标签, 来源, 耗时)。来源为 'glm' 或 'keyword'。"""
+    """返回 (标签, 来源, 耗时)。来源为 'qwen' 或 'keyword'。"""
     start = time.perf_counter()
     label = None
     source = "keyword"
@@ -84,7 +84,7 @@ def classify(question: str, classifier_client=None) -> tuple[str, str, float]:
                 resp = classifier_client.chat(msgs, temperature=0.0)
                 label = parse_label(resp.text)
                 if label is not None:
-                    source = "glm"
+                    source = "qwen"
                     break
             except ModelUnavailableError:
                 break  # 分类器不可用，直接走关键词

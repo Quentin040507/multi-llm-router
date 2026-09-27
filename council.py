@@ -48,7 +48,7 @@ def _build_clients() -> dict[str, OpenAICompatibleClient]:
 
 # 各轮最大输出 token：亮观点/互评限 150 字，主持人总结 300~800 字。
 # 需留足余量给「思考型模型」（如 Kimi K 系列会先输出 reasoning_content 再给答案），
-# 故上限放宽；对 DeepSeek/GLM 而言这只是上限，实际仍受 prompt 字数约束。
+# 故上限放宽；对 DeepSeek/Qwen 而言这只是上限，实际仍受 prompt 字数约束。
 ROUND_MAX_TOKENS = {1: 3000, 2: 3000, 3: 6000}
 
 

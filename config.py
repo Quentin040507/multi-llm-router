@@ -37,13 +37,13 @@ MODELS = {
         "api_key_env": "DEEPSEEK_API_KEY",
         "description": "代码、数学、逻辑推理",
     },
-    "glm": {
-        "name": "glm",
-        "label": "GLM",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "model": "glm-4.5-air",
-        "api_key_env": "ZHIPU_API_KEY",
-        "description": "中文写作、文案、办公场景",
+    "qwen": {
+        "name": "qwen",
+        "label": "Qwen",
+        "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-plus",
+        "api_key_env": "DASHSCOPE_API_KEY",
+        "description": "中文写作、文案、代码辅助、多语言",
     },
     "kimi": {
         "name": "kimi",
@@ -59,17 +59,17 @@ MODELS = {
     },
 }
 
-MODEL_KEYS = tuple(MODELS.keys())  # ("deepseek", "glm", "kimi")
+MODEL_KEYS = tuple(MODELS.keys())  # ("deepseek", "qwen", "kimi")
 
 # ---- 路由标签 -> 模型 ----
 LABEL_TO_MODEL = {
     "code_math": "deepseek",
-    "chinese_writing": "glm",
+    "chinese_writing": "qwen",
     "general": "kimi",
 }
 
-# 分类器使用最便宜的 GLM；综合点评使用 DeepSeek
-CLASSIFIER_MODEL = "glm"
+# 分类器使用 Qwen；综合点评使用 DeepSeek
+CLASSIFIER_MODEL = "qwen"
 SUMMARY_MODEL = "deepseek"
 
 
@@ -92,7 +92,7 @@ def key_status() -> dict[str, bool]:
 # 模型标识 -> .env 变量名
 _ENV_FIELD_MAP = {
     "deepseek": "DEEPSEEK_API_KEY",
-    "glm": "ZHIPU_API_KEY",
+    "qwen": "DASHSCOPE_API_KEY",
     "kimi": "MOONSHOT_API_KEY",
 }
 

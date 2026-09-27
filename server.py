@@ -47,7 +47,7 @@ class AskRequest(BaseModel):
 
 class ConfigRequest(BaseModel):
     deepseek: str = ""
-    glm: str = ""
+    qwen: str = ""
     kimi: str = ""
 
 
@@ -75,7 +75,7 @@ def get_config() -> dict:
 
 @app.post("/config")
 def set_config(req: ConfigRequest) -> dict:
-    cfg.save_api_keys({"deepseek": req.deepseek, "glm": req.glm, "kimi": req.kimi})
+    cfg.save_api_keys({"deepseek": req.deepseek, "qwen": req.qwen, "kimi": req.kimi})
     return {"keys": cfg.key_status()}
 
 

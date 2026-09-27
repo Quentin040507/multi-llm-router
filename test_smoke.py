@@ -28,7 +28,7 @@ def test_keyword_classify():
 
 def test_label_mapping():
     assert LABEL_TO_MODEL["code_math"] == "deepseek"
-    assert LABEL_TO_MODEL["chinese_writing"] == "glm"
+    assert LABEL_TO_MODEL["chinese_writing"] == "qwen"
     assert LABEL_TO_MODEL["general"] == "kimi"
 
 
@@ -36,24 +36,24 @@ def test_route_keyword_fallback_without_classifier():
     label, source, model, _ = route("写一段产品介绍文案", classifier_client=None)
     assert label == "chinese_writing"
     assert source == "keyword"
-    assert model == "glm"
+    assert model == "qwen"
 
 
-def test_route_uses_glm_classifier_when_available():
+def test_route_uses_qwen_classifier_when_available():
     fake = mock.MagicMock()
     fake.chat.return_value = mock.MagicMock(text="code_math")
     label, source, model, _ = route("帮我写个排序算法", classifier_client=fake)
     assert label == "code_math"
-    assert source == "glm"
+    assert source == "qwen"
     assert model == "deepseek"
 
 
-def test_classify_retries_on_bad_parse_then_glm():
+def test_classify_retries_on_bad_parse_then_qwen():
     fake = mock.MagicMock()
     fake.chat.side_effect = [mock.MagicMock(text="我也不知道算哪个"), mock.MagicMock(text="general")]
     label, source, _ = classify("今天天气怎么样", classifier_client=fake)
     assert label == "general"
-    assert source == "glm"
+    assert source == "qwen"
     assert fake.chat.call_count == 2
 
 
@@ -71,7 +71,7 @@ def test_route_mode_degrades_when_selected_model_fails():
     import modes
     from client import ModelUnavailableError, Response
 
-    labels = {"deepseek": "DeepSeek", "glm": "GLM", "kimi": "Kimi"}
+    labels = {"deepseek": "DeepSeek", "qwen": "Qwen", "kimi": "Kimi"}
 
     def fake_make(model_key):
         c = mock.MagicMock()
@@ -89,7 +89,7 @@ def test_route_mode_degrades_when_selected_model_fails():
         result = modes.route_mode("帮我写个排序", stream=False)
 
     assert result is not None
-    assert result["model"] == "glm"  # DeepSeek 失败 -> 降级到 GLM
+    assert result["model"] == "qwen"  # DeepSeek 失败 -> 降级到 Qwen
 
 
 if __name__ == "__main__":

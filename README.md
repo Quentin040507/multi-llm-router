@@ -7,7 +7,7 @@
 | 模型 | API 提供方 | 擅长领域（路由依据） |
 |---|---|---|
 | DeepSeek（deepseek-chat） | DeepSeek 官方 | 代码、数学、逻辑推理 |
-| GLM（glm-4.5-air） | 智谱 BigModel | 中文写作、文案、办公场景 |
+| Qwen（qwen-plus） | 阿里云百炼 | 中文写作、文案、代码辅助、多语言 |
 | Kimi（kimi-k2.7-code-highspeed） | 月之暗面 Moonshot | 通用对话、长文理解、多语言 |
 
 ---
@@ -27,7 +27,7 @@
              │                          │                         │
              ▼                          └────────────┬────────────┘
       ┌─────────────┐                                │
-      │  router.py   │  GLM 分类 + 关键词兜底          │ 三路并行
+      │  router.py   │  Qwen 分类 + 关键词兜底          │ 三路并行
       │  分类 & 路由  │◄───────────────────────────────┘
       └──────┬──────┘
              │ 选中 1 个（或 3 个）
@@ -39,7 +39,7 @@
              │
      ┌───────┼────────┬──────────┐
      ▼       ▼        ▼          ▼
-  DeepSeek   GLM      Kimi      （三家 OpenAI 兼容 API）
+  DeepSeek   Qwen     Kimi      （三家 OpenAI 兼容 API）
   代码/数学  中文写作  通用/长文
 ```
 
@@ -53,7 +53,7 @@
 ├── 双击打开三ai 系统.command   # 双击启动窗口（macOS）
 ├── config.py       # 模型注册表 + .env 加载 + 标签映射
 ├── client.py       # OpenAI 兼容客户端（同步/异步/流式）
-├── router.py       # 分类与路由（GLM 分类 + 关键词兜底）
+├── router.py       # 分类与路由（Qwen 分类 + 关键词兜底）
 ├── modes.py        # 三种模式逻辑
 ├── council.py      # 圆桌会诊（三轮讨论 + SSE 事件流）
 ├── sessions.py     # 多会话存储与历史记录（持久化 .sessions.json）
@@ -90,7 +90,7 @@ cp .env.example .env
 | 环境变量 | 对应模型 |
 |---|---|
 | `DEEPSEEK_API_KEY` | DeepSeek |
-| `ZHIPU_API_KEY` | GLM |
+| `DASHSCOPE_API_KEY` | Qwen |
 | `MOONSHOT_API_KEY` | Kimi |
 
 `.env` 已加入 `.gitignore`，不会误提交。
@@ -103,7 +103,7 @@ cp .env.example .env
 # 1. 智能路由（默认）——自动判领域并选模型
 python3 app.py "帮我用Python写一个快速排序"        # → 路由到 DeepSeek
 
-# 2. 中文写作 → 路由到 GLM
+# 2. 中文写作 → 路由到 Qwen
 python3 app.py "帮我写一条小红书风格的奶茶店开业文案"
 
 # 3. 圆桌会诊 + DeepSeek 综合点评
@@ -149,7 +149,7 @@ python3 -m uvicorn server:app --host 127.0.0.1 --port 8000
 |---|---|---|
 | GET | `/` | 网页窗口 |
 | GET | `/config` | 查询各模型 key 是否已配置 |
-| POST | `/config` | 保存 key（body: `{"deepseek":"...","glm":"...","kimi":"..."}`） |
+| POST | `/config` | 保存 key（body: `{"deepseek":"...","qwen":"...","kimi":"..."}`） |
 | GET | `/sessions` | 会话列表 |
 | POST | `/sessions/new` | 新建会话 |
 | GET | `/sessions/{id}` | 某会话完整历史 |
@@ -197,7 +197,7 @@ curl -X POST http://127.0.0.1:8000/ask \
 python3 test_smoke.py
 ```
 
-覆盖：标签解析（纯标签 / JSON / 引号 / 夹杂文字）、关键词分类、标签→模型映射、无分类器时的兜底、GLM 分类可用/失败、解析失败重试一次。
+覆盖：标签解析（纯标签 / JSON / 引号 / 夹杂文字）、关键词分类、标签→模型映射、无分类器时的兜底、Qwen 分类可用/失败、解析失败重试一次。
 
 ---
 
@@ -222,7 +222,7 @@ python3 test_smoke.py
 ## 九、验收对照
 
 1. `app.py "帮我用Python写一个快速排序"` → 分类 `code_math` → 路由 DeepSeek 流式输出代码。✅
-2. `app.py "帮我写一条小红书风格的奶茶店开业文案"` → 分类 `chinese_writing` → 路由 GLM。✅
+2. `app.py "帮我写一条小红书风格的奶茶店开业文案"` → 分类 `chinese_writing` → 路由 Qwen。✅
 3. `app.py --mode all "量子计算和经典计算的本质区别是什么"` → 三模型并行 + DeepSeek 综合点评。✅
 4. 故意填错一个 key → 调用失败自动降级到可用模型并明确提示。✅
 

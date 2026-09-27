@@ -7,7 +7,7 @@ proj = "/Users/apple/Downloads/个人信息/我做的小玩具/三模型路由�
 iconset = os.path.join(proj, "AppIcon.iconset")
 os.makedirs(iconset, exist_ok=True)
 
-# Brand colors: DeepSeek blue, GLM teal, Kimi purple
+# Brand colors: DeepSeek blue, Qwen teal, Kimi purple
 COLORS = ["#1E90FF", "#00D4AA", "#A855F7"]
 BG = "#0F172A"  # dark slate
 

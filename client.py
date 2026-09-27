@@ -61,7 +61,7 @@ class OpenAICompatibleClient:
 
     @property
     def endpoint(self) -> str:
-        # DeepSeek / GLM / Kimi 三家均在 base_url 下追加 /chat/completions
+        # DeepSeek / Qwen / Kimi 三家均在 base_url 下追加 /chat/completions
         return f"{self.base_url}/chat/completions"
 
     def _headers(self) -> dict:

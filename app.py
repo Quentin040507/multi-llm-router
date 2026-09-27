@@ -18,12 +18,12 @@ from modes import route_mode, all_mode, vote_mode
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="app.py",
-        description="三模型分工协作的 LLM 智能路由系统（DeepSeek / GLM / Kimi）",
+        description="三模型分工协作的 LLM 智能路由系统（DeepSeek / Qwen / Kimi）",
     )
     parser.add_argument("question", nargs="+", help="要提问的问题")
     parser.add_argument("--mode", choices=["route", "all", "vote"], default="route",
                         help="运行模式：route=智能路由(默认) all=三模型对比 vote=举手表决")
-    parser.add_argument("--model", choices=["deepseek", "glm", "kimi"],
+    parser.add_argument("--model", choices=["deepseek", "qwen", "kimi"],
                         help="强制指定模型（仅 route 模式有效）")
     parser.add_argument("--stream", action="store_true", help="流式输出（仅 route 模式有效）")
     args = parser.parse_args()
