@@ -58,7 +58,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let config = WKWebViewConfiguration()
         webview = WKWebView(frame: NSRect(x: 0, y: 0, width: 1120, height: 820), configuration: config)
-        webview.load(URLRequest(url: URL(string: urlStr)!))
+
+        // 清除 WKWebView 缓存，确保每次打开都是最新前端
+        let dataStore = WKWebsiteDataStore.default()
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        dataStore.removeData(ofTypes: types, modifiedSince: Date.distantPast) {}
+
+        var req = URLRequest(url: URL(string: urlStr)!)
+        req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        webview.load(req)
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 820),

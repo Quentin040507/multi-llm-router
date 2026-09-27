@@ -40,7 +40,7 @@ MODELS = {
     "qwen": {
         "name": "qwen",
         "label": "Qwen",
-        "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model": "qwen-plus",
         "api_key_env": "DASHSCOPE_API_KEY",
         "description": "中文写作、文案、代码辅助、多语言",
